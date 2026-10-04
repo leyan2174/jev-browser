@@ -23,6 +23,7 @@
   },
   "bin": {
     "jev-browser": "dist/cli.js",
+    "jev-browser-agent": "dist/agent-cli.js",
     "jev-browser-mcp": "dist/mcp-stdio.js"
   },
   "files": [

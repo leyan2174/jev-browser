@@ -1,5 +1,8 @@
 # Jev Browser
 
+Fork extension: [isolated agent CLI and one-time X login migration](docs/agent-isolation.md)
+(`jev-browser-agent --agent NAME …`). Upstream SDK/CLI/MCP behavior is preserved.
+
 **Parallel semantic decisions. Deterministic Playwright effects. Explicit verification provenance.**
 
 Jev Browser combines native Playwright operations with [Jev](https://typesafe.ai) decisions over actual page elements. Use it instead of a Playwright MCP/CLI setup for browser automation, and instead of Stagehand for DOM-grounded `act`, `observe`, structured `extract`, and bounded agent workflows.

@@ -48,7 +48,7 @@ assert.ok(packed.files.some(f => f.path === 'skills/jev-browser/SKILL.md'));
 assert.ok(!packed.files.some(f => /(^|\/)(\.env($|\.)|node_modules|artifacts|test-results|\.git)(\/|$)/.test(f.path)));
 const tarball = resolve(root, packed.filename);
 const directory = await mkdtemp(join(tmpdir(), 'jev-package-consumer-'));
-const env = { ...process.env, JEV_API_KEY: '', TYPESAFE_API_KEY: '', JEV_SESSION_DIR: join(directory, 'sessions') };
+const env = { ...process.env, JEV_API_KEY: '', TYPESAFE_API_KEY: '', JEV_SESSION_DIR: join(directory, 'sessions'), JEV_AGENT_HOME: join(directory, 'agents') };
 let site;
 try {
   // Standalone: npm installs the peers (playwright-core, zod) itself; the full playwright package is not needed.
@@ -59,6 +59,10 @@ try {
   assert.equal(installed('zod').split('.')[0], '4');
   await assert.rejects(access(join(directory, 'node_modules', 'playwright')), { code: 'ENOENT' });
   const cli = args => run([join(pkg, 'dist', 'cli.js'), ...args], { cwd: directory, env });
+  const agent = args => run([join(pkg, 'dist', 'agent-cli.js'), '--agent', 'package', ...args], { cwd: directory, env });
+  assert.match((await agent(['--help'])).stdout, /import-x/);
+  const agentBin = join(directory, 'node_modules', '.bin', process.platform === 'win32' ? 'jev-browser-agent.cmd' : 'jev-browser-agent');
+  await access(agentBin, process.platform === 'win32' ? constants.F_OK : constants.X_OK);
   const version = await cli(['--version']); assert.equal(version.stdout.trim(), packed.version);
   if (process.platform !== 'win32') await access(join(directory, 'node_modules', '.bin', 'jev-browser'), constants.X_OK);
   // Every installed check below then runs without the bundled DOM dependency.
@@ -92,6 +96,12 @@ try {
   await new Promise(resolve => site.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${site.address().port}`;
   try {
+    await agent(['open', url]);
+    const result = JSON.parse((await agent(['call', 'assert', '--args', '{"target":"h1","property":"text","expected":"Pending"}'])).stdout);
+    assert.equal(result.ok, true);
+    assert.equal(result.result.reason, 'verified');
+  } finally { await agent(['close']); }
+  try {
     await cli(['open', url, '--session', 'package']);
     const snapshot = JSON.parse((await cli(['snapshot', '--session', 'package'])).stdout).result;
     await cli(['click', snapshot.elements.find(e => e.name === 'Save').id, '--session', 'package']);
@@ -116,7 +126,7 @@ try {
   const vision = await checkInstalledVision(pkg,directory,env);
   const runner = await checkInstalledRunner(npm,tarball,env);
   const minimum = await checkInstalledMinimum(npm,tarball,env);
-  console.log(JSON.stringify({ ...goals, ...semantic, ...resume, ...selections, ...screen, ...vision, ...runner, ...minimum, package: packed.name, version: packed.version, filename: packed.filename, sha256: createHash('sha256').update(await readFile(tarball)).digest('hex'), installedSDK: true, nativePlaywrightAssertions: true, installedPersistentCLI: true, installedMCP: true, entryCount: packed.entryCount }, null, 2));
+  console.log(JSON.stringify({ ...goals, ...semantic, ...resume, ...selections, ...screen, ...vision, ...runner, ...minimum, package: packed.name, version: packed.version, filename: packed.filename, sha256: createHash('sha256').update(await readFile(tarball)).digest('hex'), installedSDK: true, nativePlaywrightAssertions: true, installedPersistentCLI: true, installedAgentCLI: true, installedMCP: true, entryCount: packed.entryCount }, null, 2));
 } finally {
   if (site) { site.closeAllConnections(); await new Promise(resolve => site.close(resolve)); }
   await rm(directory, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });

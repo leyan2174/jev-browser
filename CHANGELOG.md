@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Windows persistent sessions now start without opening a console or Windows Terminal window. The worker survives the starting CLI process and still closes through the usual session commands. Startup uses the Windows built-in PowerShell and .NET process launcher; Node.js remains the runtime.
+
 ## 0.14.2
 
 - `run` combobox selection no longer fails with `NO_MATCH` when the matching option is already shown as a short `settleTimeoutMs` budget expires on a slow machine; the deadline is judged on the page, not on how many polls fit into it.

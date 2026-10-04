@@ -40,6 +40,17 @@ test('independent CLI invocations share a named browser and native refs without 
   const closed = await cli(['close', '--session', session]); assert.equal(closed.code, 0, closed.stdout);
   const gone = await cli(['snapshot', '--session', session]); assert.equal(gone.code, 1);
 });
+test('failed worker startup releases its session so the same name can be retried', async t => {
+  const session = 'failed-' + randomUUID().slice(0, 8);
+  t.after(() => cli(['close', '--session', session]));
+  const failed = await cli(['open', 'http://127.0.0.1:1', '--session', session]);
+  assert.equal(failed.code, 1, failed.stdout + failed.stderr);
+  assert.equal(JSON.parse(failed.stdout).ok, false);
+  const retried = await cli(['open', service.url, '--session', session]);
+  assert.equal(retried.code, 0, retried.stdout + retried.stderr);
+  const snapshot = await cli(['snapshot', '--session', session]);
+  assert.equal(snapshot.code, 0, snapshot.stdout + snapshot.stderr);
+});
 test('session endpoints reject requests without the private authentication token', async t => {
   const session = 'auth-' + randomUUID().slice(0, 8); t.after(() => cli(['close', '--session', session]));
   const open = await cli(['open', service.url, '--session', session]); assert.equal(open.code, 0, open.stdout);

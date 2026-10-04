@@ -12,6 +12,16 @@ import { httpServer } from './helpers.mjs';
 
 const entry = fileURLToPath(new URL('../dist/agent-cli.js', import.meta.url));
 const cookie = { name: 'synthetic', value: 'test-secret-never-real', domain: '.x.com', path: '/', expires: Math.floor(Date.now()/1000)+3600, httpOnly: true, secure: true, sameSite: 'Lax' };
+test('Windows session worker does not create a visible console window', { skip: process.platform !== 'win32' }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-console-test-'));
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }));
+  const probe = fileURLToPath(new URL('./windows-console.ps1', import.meta.url));
+  const powershell = join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-File', probe, '-Entry', entry, '-NodePath', process.execPath, '-AgentHome', root], { windowsHide: true, timeout: 60000 });
+  const result = JSON.parse(stdout);
+  assert.equal(result.newVisibleConsoleWindows, 0);
+  for (const key of ['opened','healthy','snapshot','closed']) assert.equal(result[key], true);
+});
 test('agent client startup does not load Playwright, provider SDK or MCP', async () => {
   const script = `import { registerHooks } from 'node:module';
     registerHooks({ resolve(specifier, context, next) {

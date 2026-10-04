@@ -8,6 +8,8 @@ import { BrowserError, type BrowserErrorCode, type PublicError } from './errors.
 import type { BrowserLaunchOptions } from './types.js';
 import type { Command } from './commands.js';
 import { sameCapabilities, type Capability } from './capabilities.js';
+import { createInterface } from 'node:readline';
+import { launchWindowsWorker } from './windows-worker.js';
 
 export const descriptorSchema = z.object({ name: z.string(), cwd: z.string(), pid: z.number().int().positive(), port: z.number().int().min(1).max(65535), token: z.string().regex(/^[0-9a-f]{64}$/), createdAt: z.string(), optionsHash: z.string().regex(/^[0-9a-f]{64}$/).optional() });
 function canonical(value: unknown): unknown {
@@ -91,23 +93,40 @@ export async function openSession(name: string, options: BrowserLaunchOptions, u
     return { ...existing, session: name, status: 'open', reused: true };
   }
   return new Promise((resolve, reject) => {
-    const child = fork(new URL('./session-worker.js', import.meta.url), [], { cwd: process.cwd(), detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+    const windows = process.platform === 'win32';
+    const child = windows ? launchWindowsWorker()
+      : fork(new URL('./session-worker.js', import.meta.url), [], { cwd: process.cwd(), detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
     let settled = false;
     const timer = setTimeout(() => fail(new BrowserError('SESSION_START_FAILED', 'Browser session did not start within 30 seconds.')), 30_000);
     const fail = (error: Error) => {
-      if (settled) return; settled = true; clearTimeout(timer); child.kill('SIGTERM');
+      if (settled) return; settled = true; clearTimeout(timer);
+      // Closing the bootstrap pipe makes the Windows launcher kill its unreleased worker.
+      if (windows) { child.stdin?.end(); child.stdout?.destroy(); } else child.kill('SIGTERM');
       void rm(directory, { recursive: true, force: true }).finally(() => reject(error));
     };
     child.once('error', fail);
+    child.stdin?.on('error', fail);
     child.once('exit', () => fail(new BrowserError('SESSION_START_FAILED', 'Browser session exited before it was ready. Check browser installation and launch options.')));
-    child.on('message', message => {
+    const ready = (message: unknown) => {
       const result = message as { ready?: boolean; error?: { code: BrowserErrorCode; message: string; retryable?: boolean }; url?: string; screenOnly?: boolean };
       if (result.error) { fail(new BrowserError(result.error.code, result.error.message, { retryable: result.error.retryable === true })); return; }
       if (!result.ready || settled) return;
-      settled = true; clearTimeout(timer); child.disconnect(); child.unref();
+      settled = true; clearTimeout(timer);
+      if (windows) child.stdin?.end('release\n'); else child.disconnect();
+      child.unref();
       resolve({ session: name, status: 'open', ...(result.screenOnly ? { screenOnly: true } : { url: result.url }), reused: false });
-    });
-    child.send({ name, directory, options, optionsHash: launchOptionsHash(options, capabilities), url, idleTimeoutMs, capabilities });
+    };
+    if (windows) {
+      const lines = createInterface({ input: child.stdout! });
+      lines.once('line', line => {
+        lines.close();
+        // The worker can inherit the launcher's pipe handle. Do not wait for its lifetime.
+        child.stdout!.destroy();
+        try { ready(JSON.parse(line)); } catch { fail(new BrowserError('SESSION_START_FAILED', 'Invalid session worker startup response.')); }
+      });
+    } else child.on('message', ready);
+    const input = { name, directory, options, optionsHash: launchOptionsHash(options, capabilities), url, idleTimeoutMs, capabilities };
+    if (windows) child.stdin!.write(`${JSON.stringify(input)}\n`); else child.send(input);
   });
 }
 export async function listSessions(): Promise<{ sessions: { name: string; cwd: string; pid: number; createdAt: string }[] }> {

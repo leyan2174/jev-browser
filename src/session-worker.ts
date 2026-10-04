@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { writeFile, rm } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { JevBrowser } from './browser.js';
 import { publicURL } from './observation.js';
@@ -10,7 +11,10 @@ import type { BrowserLaunchOptions } from './types.js';
 import { requireCapability, type Capability } from './capabilities.js';
 
 interface Start { name: string; directory: string; options: BrowserLaunchOptions; optionsHash: string; url?: string; idleTimeoutMs: number; capabilities: Capability[] }
-process.once('message', async (input: Start) => {
+function report(value: unknown) {
+  if (process.send) process.send(value); else process.stdout.write(`${JSON.stringify(value)}\n`);
+}
+async function start(input: Start) {
   let core: JevBrowser | undefined, server: Server | undefined, idle: NodeJS.Timeout | undefined;
   let closing: Promise<void> | undefined;
   const token = randomBytes(32).toString('hex');
@@ -68,10 +72,14 @@ process.once('message', async (input: Start) => {
     if (!address || typeof address === 'string') throw new Error('Missing local listener');
     await writeFile(join(input.directory, 'session.json'), JSON.stringify({ name: input.name, cwd: resolve(process.cwd()), pid: process.pid, port: address.port, token, createdAt: new Date().toISOString(), optionsHash: input.optionsHash }), { mode: 0o600, flag: 'wx' });
     touch();
-    process.send?.({ ready: true, ...(core.screenOnly ? { screenOnly: true } : { url: publicURL(core.page.url()) }) });
+    report({ ready: true, ...(core.screenOnly ? { screenOnly: true } : { url: publicURL(core.page.url()) }) });
   } catch (error) {
-    process.send?.({ error: publicError(error) });
+    report({ error: publicError(error) });
     await close(); process.exitCode = 1;
     process.disconnect?.();
   }
-});
+}
+if (process.argv.includes('--stdio-bootstrap')) {
+  try { void start(JSON.parse(readFileSync(0, 'utf8'))); }
+  catch { report({ error: { code: 'SESSION_START_FAILED', message: 'Invalid session bootstrap input.' } }); process.exitCode = 1; }
+} else process.once('message', start);

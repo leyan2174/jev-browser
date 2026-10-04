@@ -45,6 +45,8 @@ assert.ok(packed.files.some(f => f.path === 'dist/session-worker.js'));
 assert.ok(!packed.files.some(f => /^dist\/pi\.(?:js|d\.ts)(?:\.map)?$/.test(f.path)));
 assert.ok(!packed.files.some(f => f.path === 'docs/pi.md'));
 assert.ok(packed.files.some(f => f.path === 'skills/jev-browser/SKILL.md'));
+assert.ok(packed.files.some(f => f.path === 'skills/jev-browser-isolated/SKILL.md'));
+assert.ok(packed.files.some(f => f.path === 'skills/jev-browser-isolated/scripts/jev.mjs'));
 assert.ok(!packed.files.some(f => /(^|\/)(\.env($|\.)|node_modules|artifacts|test-results|\.git)(\/|$)/.test(f.path)));
 const tarball = resolve(root, packed.filename);
 const directory = await mkdtemp(join(tmpdir(), 'jev-package-consumer-'));
@@ -59,7 +61,7 @@ try {
   assert.equal(installed('zod').split('.')[0], '4');
   await assert.rejects(access(join(directory, 'node_modules', 'playwright')), { code: 'ENOENT' });
   const cli = args => run([join(pkg, 'dist', 'cli.js'), ...args], { cwd: directory, env });
-  const agent = args => run([join(pkg, 'dist', 'agent-cli.js'), '--agent', 'package', ...args], { cwd: directory, env });
+  const agent = args => run([join(pkg, 'skills', 'jev-browser-isolated', 'scripts', 'jev.mjs'), '--agent', 'package', ...args], { cwd: directory, env: { ...env, JEV_BROWSER_ROOT: '' } });
   assert.match((await agent(['--help'])).stdout, /import-x/);
   const agentBin = join(directory, 'node_modules', '.bin', process.platform === 'win32' ? 'jev-browser-agent.cmd' : 'jev-browser-agent');
   await access(agentBin, process.platform === 'win32' ? constants.F_OK : constants.X_OK);

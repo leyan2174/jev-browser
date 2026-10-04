@@ -3,6 +3,13 @@
 Fork extension: [isolated agent CLI and one-time X login migration](docs/agent-isolation.md)
 (`jev-browser-agent --agent NAME …`). Upstream SDK/CLI/MCP behavior is preserved.
 
+Agent skill: [jev-browser-isolated](skills/jev-browser-isolated/SKILL.md) teaches
+session ownership, native/semantic operations and scoped X login migration.
+Link that skill directory into your agent host's skill directory, or copy it and
+set `JEV_BROWSER_ROOT` to this built checkout/package root. In Codex, invoke
+`$jev-browser-isolated`. The skill is included in the npm package; it contains
+no personal profiles or credentials.
+
 **Parallel semantic decisions. Deterministic Playwright effects. Explicit verification provenance.**
 
 Jev Browser combines native Playwright operations with [Jev](https://typesafe.ai) decisions over actual page elements. Use it instead of a Playwright MCP/CLI setup for browser automation, and instead of Stagehand for DOM-grounded `act`, `observe`, structured `extract`, and bounded agent workflows.
